@@ -15,6 +15,7 @@ class MessageForm extends Component {
         message: '',
         channel: this.props.currentChannel,
         user: this.props.currentUser,
+        typingRef: firebase.database().ref('typing'),
         errors: [],
         loading: false,
         modal: false
@@ -25,6 +26,24 @@ class MessageForm extends Component {
 
     handleChange = event => {
         this.setState({ [event.target.name]: event.target.value });
+    }
+
+    handleKeyDown = () => {
+        const { message, typingRef, channel, user } = this.state;
+        
+        if(message){
+            typingRef
+                .child(channel.id)
+                .child(user.uid)
+                .set(user.displayName);
+        }
+        else{
+
+            typingRef
+                .child(channel.id)
+                .child(user.uid)
+                .remove();
+        }
     }
 
     createMessage = (fileUrl = null) => {
@@ -47,17 +66,21 @@ class MessageForm extends Component {
     }
 
     sendMessage = () => {
-        const { messagesRef } = this.props;
-        const { message, channel } = this.state;
+        const { getMessagesRef } = this.props;
+        const { message, channel, typingRef, user } = this.state;
 
         if(message) {
             this.setState({ loading: true });
-            messagesRef
+            getMessagesRef()
                 .child(channel.id)
                 .push()
                 .set(this.createMessage())
                 .then(() => {
-                    this.setState({ loading: false, message: '', errors: []})
+                    this.setState({ loading: false, message: '', errors: []});
+                    typingRef
+                        .child(channel.id)
+                        .child(user.uid)
+                        .remove();
                 })
                 .catch(err => {
                     this.setState({ loading: false, errors: this.state.errors.concat(err) })
@@ -70,10 +93,19 @@ class MessageForm extends Component {
         }
     }
 
+    getPath = () => {
+        if(this.props.isPrivateChannel) {
+            return `chat/private-${this.state.channel.id}`;
+        }
+        else{
+            return `chat/public`;
+        }
+    }
+
     uploadFile = (file, metadata) => {
         const pathToUpload = this.state.channel.id;
-        const ref = this.props.messagesRef;
-        const filePath = `chat/public/${uuidv4()}.jpg`;
+        const ref = this.props.getMessagesRef();
+        const filePath = `${this.getPath()}/${uuidv4()}.jpg`;
 
         this.setState({
             uploadState: 'uploading',
@@ -138,6 +170,7 @@ class MessageForm extends Component {
                         this.handleChange(event);
                         this.setState({ errors: [] });
                     }}
+                    onKeyDown={this.handleKeyDown}
                     style={{ marginBottom: "0.7em" }}
                     label={<Button icon={'add'} />}
                     labelPosition="left"
